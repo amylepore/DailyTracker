@@ -3,42 +3,126 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <meta name="theme-color" content="#ffffff" />
+  <meta name="theme-color" content="#0b0f17" />
   <link rel="manifest" href="manifest.json" />
   <title>Lent Tracker</title>
+
   <style>
-    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; margin: 16px; }
-    h1 { font-size: 20px; margin: 0 0 6px; }
-    .meta { color: #555; margin-bottom: 12px; }
-    .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid #eee; }
-    .date { font-weight: 650; }
-    .toggles { display: flex; gap: 12px; flex-wrap: wrap; justify-content: flex-end; }
-    label { display: inline-flex; align-items: center; gap: 6px; }
-    .today { background: #fff8d6; padding: 10px; border-radius: 12px; margin: 12px 0; }
-    button { padding: 10px 12px; border: 1px solid #ddd; background: #fff; border-radius: 12px; }
-    .btns { display:flex; gap:10px; margin: 10px 0; flex-wrap: wrap; }
-    small { color:#666; }
+    :root{
+      --bg:#0b0f17;
+      --card:#121a2a;
+      --card2:#0f1625;
+      --text:#e8eefc;
+      --muted:#a9b4d0;
+      --line:#24314d;
+      --accent:#6ea8ff;
+      --accent2:#60e3c6;
+      --warn:#f2d35c;
+    }
+
+    body{
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial;
+      margin:16px;
+      background:var(--bg);
+      color:var(--text);
+    }
+    h1{ font-size:20px; margin:0 0 6px; }
+    .meta{ color:var(--muted); margin-bottom:12px; }
+
+    .card{
+      background: linear-gradient(180deg, var(--card), var(--card2));
+      border:1px solid var(--line);
+      border-radius:14px;
+      padding:12px;
+      margin: 12px 0;
+    }
+
+    .btns{ display:flex; gap:10px; flex-wrap:wrap; margin:10px 0; }
+    button{
+      padding:10px 12px;
+      border:1px solid var(--line);
+      background:#0d1424;
+      color:var(--text);
+      border-radius:12px;
+    }
+    button:active{ transform: translateY(1px); }
+
+    .row{
+      display:flex; align-items:center; justify-content:space-between;
+      gap:12px; padding:10px 0; border-bottom:1px solid rgba(255,255,255,0.06);
+    }
+    .date{ font-weight:650; }
+    small{ color:var(--muted); }
+
+    .toggles{
+      display:flex; gap:12px; flex-wrap:wrap; justify-content:flex-end;
+    }
+    label{ display:inline-flex; align-items:center; gap:6px; color:var(--text); }
+
+    input[type="checkbox"]{
+      width:18px; height:18px;
+      accent-color: var(--accent);
+    }
+
+    .today-outline{
+      outline: 2px solid rgba(242, 211, 92, 0.85);
+      border-radius: 12px;
+      padding: 10px;
+    }
+
+    /* Progress bar */
+    .progressWrap{ margin-top: 10px; }
+    .progressTop{
+      display:flex; align-items:baseline; justify-content:space-between; gap:10px;
+      margin-bottom:8px;
+    }
+    .progressLabel{ font-weight:600; }
+    .progressPct{ color:var(--muted); }
+
+    .bar{
+      height:12px;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.10);
+      border-radius: 999px;
+      overflow:hidden;
+    }
+    .fill{
+      height:100%;
+      width:0%;
+      background: linear-gradient(90deg, var(--accent), var(--accent2));
+      border-radius: 999px;
+      transition: width 180ms ease;
+    }
   </style>
 </head>
 <body>
   <h1>Lent Tracker</h1>
   <div class="meta" id="meta"></div>
 
-  <div class="today" id="todayBox"></div>
+  <div class="card" id="progressCard">
+    <div class="progressTop">
+      <div class="progressLabel">Progress</div>
+      <div class="progressPct" id="progressText"></div>
+    </div>
+    <div class="bar"><div class="fill" id="progressFill"></div></div>
+  </div>
+
+  <div class="card" id="todayCard"></div>
 
   <div class="btns">
     <button id="jumpToday">Jump to Today</button>
     <button id="reset">Reset All</button>
   </div>
 
-  <div id="list"></div>
+  <div class="card" id="listCard">
+    <div id="list"></div>
+  </div>
 
 <script>
   // Lent 2026 (Ash Wednesday → Easter)
   const START = new Date("2026-02-18T00:00:00");
   const END   = new Date("2026-04-05T00:00:00");
-
-  const KEY = "lent-tracker-v1";
+  const KEY = "lent-tracker-v2";
 
   function iso(d){
     const x = new Date(d);
@@ -59,7 +143,6 @@
   function save(state){
     localStorage.setItem(KEY, JSON.stringify(state));
   }
-
   function buildDates(){
     const dates = [];
     const total = daysBetween(START, END);
@@ -78,32 +161,60 @@
   document.getElementById("meta").textContent =
     `${fmt(START)} → ${fmt(END)} (${dates.length} days)`;
 
-  function render(){
-    const list = document.getElementById("list");
-    list.innerHTML = "";
+  function completionForDay(entry){
+    // Count a day as complete only if BOTH are checked (you can change this rule)
+    return entry?.workout && entry?.meditate;
+  }
 
+  function computeProgress(){
+    let completed = 0;
+    dates.forEach(d => {
+      const k = iso(d);
+      const entry = state[k];
+      if (completionForDay(entry)) completed++;
+    });
+    const total = dates.length;
+    const pct = total ? Math.round((completed / total) * 100) : 0;
+    return { completed, total, pct };
+  }
+
+  function renderProgress(){
+    const { completed, total, pct } = computeProgress();
+    document.getElementById("progressText").textContent = `${completed}/${total} days (${pct}%)`;
+    document.getElementById("progressFill").style.width = `${pct}%`;
+  }
+
+  function render(){
+    renderProgress();
+
+    // Today card
+    const todayCard = document.getElementById("todayCard");
     const todayIndex = dates.findIndex(d => iso(d) === todayISO);
 
-    // Today box
-    const todayBox = document.getElementById("todayBox");
     if(todayIndex >= 0){
       const d = dates[todayIndex];
       const k = iso(d);
       const entry = state[k] || { workout:false, meditate:false };
-      todayBox.innerHTML = `
+
+      todayCard.className = "card today-outline";
+      todayCard.innerHTML = `
         <div><strong>Today:</strong> ${fmt(d)} <small>(${k})</small></div>
-        <div class="toggles" style="margin-top:8px;">
+        <div class="toggles" style="margin-top:10px;">
           <label><input type="checkbox" id="tWorkout" ${entry.workout ? "checked":""}/> Workout</label>
           <label><input type="checkbox" id="tMeditate" ${entry.meditate ? "checked":""}/> Meditate</label>
         </div>
       `;
-      document.getElementById("tWorkout").onchange = (e)=>{ entry.workout = e.target.checked; state[k]=entry; save(state); };
-      document.getElementById("tMeditate").onchange = (e)=>{ entry.meditate = e.target.checked; state[k]=entry; save(state); };
+      document.getElementById("tWorkout").onchange = (e)=>{ entry.workout = e.target.checked; state[k]=entry; save(state); renderProgress(); };
+      document.getElementById("tMeditate").onchange = (e)=>{ entry.meditate = e.target.checked; state[k]=entry; save(state); renderProgress(); };
     } else {
-      todayBox.textContent = "Today is outside the Lent range shown in this tracker.";
+      todayCard.className = "card";
+      todayCard.textContent = "Today is outside the Lent range shown in this tracker.";
     }
 
     // Full list
+    const list = document.getElementById("list");
+    list.innerHTML = "";
+
     dates.forEach(d => {
       const k = iso(d);
       const entry = state[k] || { workout:false, meditate:false };
@@ -130,10 +241,17 @@
           cur[f] = e.target.checked;
           state[kk] = cur;
           save(state);
+          renderProgress();
         };
       });
 
-      if(k === todayISO) row.style.outline = "2px solid #f2d35c";
+      if(k === todayISO){
+        row.style.outline = "2px solid rgba(242, 211, 92, 0.6)";
+        row.style.borderRadius = "12px";
+        row.style.padding = "10px";
+        row.style.marginTop = "8px";
+      }
+
       list.appendChild(row);
     });
   }
@@ -150,7 +268,7 @@
     }
   };
 
-  // Register service worker for offline
+  // Offline
   if ("serviceWorker" in navigator) {
     window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js"));
   }

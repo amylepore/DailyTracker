@@ -1,3 +1,4 @@
+```html
 <!doctype html>
 <html lang="en">
 <head>
@@ -26,6 +27,7 @@
       background:var(--bg);
       color:var(--text);
     }
+
     h1{ font-size:20px; margin:0 0 6px; }
     .meta{ color:var(--muted); margin-bottom:12px; }
 
@@ -71,7 +73,6 @@
     }
 
     /* Progress bar */
-    .progressWrap{ margin-top: 10px; }
     .progressTop{
       display:flex; align-items:baseline; justify-content:space-between; gap:10px;
       margin-bottom:8px;
@@ -93,11 +94,29 @@
       border-radius: 999px;
       transition: width 180ms ease;
     }
+
+    /* Countdown (top-right) */
+    .countdownLabel{
+      font-size:12px;
+      color:var(--muted);
+    }
+    .countdownValue{
+      font-size:20px;
+      font-weight:700;
+      color:var(--accent);
+      line-height:1.1;
+    }
   </style>
 </head>
+
 <body>
-  <h1>Lent Tracker</h1>
-  <div class="meta" id="meta"></div>
+  <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px;">
+    <div>
+      <h1>Lent Tracker</h1>
+      <div class="meta" id="meta"></div>
+    </div>
+    <div id="countdown" style="text-align:right;"></div>
+  </div>
 
   <div class="card" id="progressCard">
     <div class="progressTop">
@@ -161,30 +180,47 @@
   document.getElementById("meta").textContent =
     `${fmt(START)} → ${fmt(END)} (${dates.length} days)`;
 
-  function completionForDay(entry){
-    // Count a day as complete only if BOTH are checked (you can change this rule)
-    return entry?.workout && entry?.meditate;
-  }
-
   function computeProgress(){
+    // Count EACH checkbox (max = 2 × days)
     let completed = 0;
+
     dates.forEach(d => {
       const k = iso(d);
-      const entry = state[k];
-      if (completionForDay(entry)) completed++;
+      const entry = state[k] || { workout:false, meditate:false };
+      if (entry.workout) completed++;
+      if (entry.meditate) completed++;
     });
-    const total = dates.length;
+
+    const total = dates.length * 2;
     const pct = total ? Math.round((completed / total) * 100) : 0;
     return { completed, total, pct };
   }
 
   function renderProgress(){
     const { completed, total, pct } = computeProgress();
-    document.getElementById("progressText").textContent = `${completed}/${total} days (${pct}%)`;
+    document.getElementById("progressText").textContent = `${completed}/${total} (${pct}%)`;
     document.getElementById("progressFill").style.width = `${pct}%`;
   }
 
+  function renderCountdown(){
+    const today = new Date();
+    today.setHours(0,0,0,0);
+
+    const end = new Date(END);
+    end.setHours(0,0,0,0);
+
+    const diffMs = end - today;
+    const daysLeft = Math.max(0, Math.ceil(diffMs / (24*60*60*1000)));
+
+    const el = document.getElementById("countdown");
+    el.innerHTML = `
+      <div class="countdownLabel">Days left</div>
+      <div class="countdownValue">${daysLeft}</div>
+    `;
+  }
+
   function render(){
+    renderCountdown();
     renderProgress();
 
     // Today card
@@ -277,3 +313,4 @@
 </script>
 </body>
 </html>
+```

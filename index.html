@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="theme-color" content="#ffffff" />
+  <link rel="manifest" href="manifest.json" />
+  <title>Lent Tracker</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; margin: 16px; }
+    h1 { font-size: 20px; margin: 0 0 6px; }
+    .meta { color: #555; margin-bottom: 12px; }
+    .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid #eee; }
+    .date { font-weight: 650; }
+    .toggles { display: flex; gap: 12px; flex-wrap: wrap; justify-content: flex-end; }
+    label { display: inline-flex; align-items: center; gap: 6px; }
+    .today { background: #fff8d6; padding: 10px; border-radius: 12px; margin: 12px 0; }
+    button { padding: 10px 12px; border: 1px solid #ddd; background: #fff; border-radius: 12px; }
+    .btns { display:flex; gap:10px; margin: 10px 0; flex-wrap: wrap; }
+    small { color:#666; }
+  </style>
+</head>
+<body>
+  <h1>Lent Tracker</h1>
+  <div class="meta" id="meta"></div>
+
+  <div class="today" id="todayBox"></div>
+
+  <div class="btns">
+    <button id="jumpToday">Jump to Today</button>
+    <button id="reset">Reset All</button>
+  </div>
+
+  <div id="list"></div>
+
+<script>
+  // Lent 2026 (Ash Wednesday → Easter)
+  const START = new Date("2026-02-18T00:00:00");
+  const END   = new Date("2026-04-05T00:00:00");
+
+  const KEY = "lent-tracker-v1";
+
+  function iso(d){
+    const x = new Date(d);
+    x.setHours(0,0,0,0);
+    return x.toISOString().slice(0,10);
+  }
+  function fmt(d){
+    return d.toLocaleDateString(undefined, { weekday:"short", month:"short", day:"numeric" });
+  }
+  function daysBetween(a,b){
+    const ms = 24*60*60*1000;
+    return Math.round((b - a)/ms);
+  }
+  function load(){
+    try { return JSON.parse(localStorage.getItem(KEY) || "{}"); }
+    catch { return {}; }
+  }
+  function save(state){
+    localStorage.setItem(KEY, JSON.stringify(state));
+  }
+
+  function buildDates(){
+    const dates = [];
+    const total = daysBetween(START, END);
+    for(let i=0;i<=total;i++){
+      const d = new Date(START);
+      d.setDate(d.getDate()+i);
+      dates.push(d);
+    }
+    return dates;
+  }
+
+  const state = load();
+  const dates = buildDates();
+  const todayISO = iso(new Date());
+
+  document.getElementById("meta").textContent =
+    `${fmt(START)} → ${fmt(END)} (${dates.length} days)`;
+
+  function render(){
+    const list = document.getElementById("list");
+    list.innerHTML = "";
+
+    const todayIndex = dates.findIndex(d => iso(d) === todayISO);
+
+    // Today box
+    const todayBox = document.getElementById("todayBox");
+    if(todayIndex >= 0){
+      const d = dates[todayIndex];
+      const k = iso(d);
+      const entry = state[k] || { workout:false, meditate:false };
+      todayBox.innerHTML = `
+        <div><strong>Today:</strong> ${fmt(d)} <small>(${k})</small></div>
+        <div class="toggles" style="margin-top:8px;">
+          <label><input type="checkbox" id="tWorkout" ${entry.workout ? "checked":""}/> Workout</label>
+          <label><input type="checkbox" id="tMeditate" ${entry.meditate ? "checked":""}/> Meditate</label>
+        </div>
+      `;
+      document.getElementById("tWorkout").onchange = (e)=>{ entry.workout = e.target.checked; state[k]=entry; save(state); };
+      document.getElementById("tMeditate").onchange = (e)=>{ entry.meditate = e.target.checked; state[k]=entry; save(state); };
+    } else {
+      todayBox.textContent = "Today is outside the Lent range shown in this tracker.";
+    }
+
+    // Full list
+    dates.forEach(d => {
+      const k = iso(d);
+      const entry = state[k] || { workout:false, meditate:false };
+
+      const row = document.createElement("div");
+      row.className = "row";
+      row.id = `day-${k}`;
+      row.innerHTML = `
+        <div>
+          <div class="date">${fmt(d)}</div>
+          <small>${k}</small>
+        </div>
+        <div class="toggles">
+          <label><input type="checkbox" data-k="${k}" data-f="workout" ${entry.workout ? "checked":""}/> Workout</label>
+          <label><input type="checkbox" data-k="${k}" data-f="meditate" ${entry.meditate ? "checked":""}/> Meditate</label>
+        </div>
+      `;
+
+      row.querySelectorAll("input[type=checkbox]").forEach(cb => {
+        cb.onchange = (e) => {
+          const kk = e.target.getAttribute("data-k");
+          const f  = e.target.getAttribute("data-f");
+          const cur = state[kk] || { workout:false, meditate:false };
+          cur[f] = e.target.checked;
+          state[kk] = cur;
+          save(state);
+        };
+      });
+
+      if(k === todayISO) row.style.outline = "2px solid #f2d35c";
+      list.appendChild(row);
+    });
+  }
+
+  document.getElementById("jumpToday").onclick = () => {
+    const el = document.getElementById(`day-${todayISO}`);
+    if(el) el.scrollIntoView({ behavior:"smooth", block:"start" });
+  };
+
+  document.getElementById("reset").onclick = () => {
+    if(confirm("Reset all checkmarks?")) {
+      localStorage.removeItem(KEY);
+      location.reload();
+    }
+  };
+
+  // Register service worker for offline
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js"));
+  }
+
+  render();
+</script>
+</body>
+</html>
